@@ -25,8 +25,8 @@
 //*******************Global*****************************************
 //holds data to be sent to the segments. logic zero turns segment on
 uint8_t segment_data[5]; 
-uint8_t min=49;            //Startup time
-uint8_t hour=17;           //Startup time
+int8_t min=49;            //Startup time
+int8_t hour=17;           //Startup time
 int16_t countL=0;
 int16_t countR=0;
 uint8_t mode=0;            //Used for tracking mode 
@@ -217,6 +217,8 @@ startup_test(); //Runs through all digits to ensure they are working
 spiRW(mode);  //initial mode displayed on bar graph (all off)
 sei();         //enable global interrupts
 while(1){
+if(min<0){min=0;hour--;}
+if(hour<0){hour=24;}
 if(min==60){hour++;min=0;}
 if(hour==25){hour=0;}
 switch(mode){
