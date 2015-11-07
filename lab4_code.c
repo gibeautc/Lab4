@@ -192,7 +192,7 @@ ISR(TIMER0_COMP_vect){
 check_sw(); //checks switches	
 spiRW(mode);//Updates mode on bar graph and gets new encoder value
 count_t++;
-if(count_t==631)//125 was calculated
+if(count_t==620)
 {
 PORTC ^=1<<0;
 count++;
