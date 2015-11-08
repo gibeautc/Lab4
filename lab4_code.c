@@ -192,7 +192,7 @@ ISR(TIMER0_COMP_vect){
 check_sw(); //checks switches	
 spiRW(mode);//Updates mode on bar graph and gets new encoder value
 count_t++;
-if(count_t==635)//640 calc 631 shows 500ms but i think its off a bit
+if(count_t==620)
 {
 PORTC ^=1<<0;
 count++;
