@@ -50,13 +50,6 @@ uint8_t up=1;
 //break count up into its digits and store as needed
 //digits are stored index 0-3   4 can be used later for colon
 void segsum(int16_t sum) {
-//if(sum>1023){sum=sum-1024;count=count-1024;}
-//if(sum<0){sum=sum+1024;count=count+1024;}
-
- //uint8_t digits=1; //how many digits will be used
- //if(sum>9){digits=2;}
- //if(sum>99){digits=3;}
- //if(sum>999){digits=4;}
  uint8_t dig;
  for(dig=0;dig<4;dig++){segment_data[dig]=10;}
  segment_data[0]=sum/1000;sum=sum-segment_data[0]*1000;
@@ -125,7 +118,7 @@ if(debounce_switch(1)==1){mode =2;countL=0;countR=0;}//Set alarm time
 if(debounce_switch(2)==1){alarm ^=1<<7;countL=0;countR=0;}//Alarm on/off 
 if(debounce_switch(3)==1){countL=0;countR=0;}//Radio on/off  LOST 13Hz adding 6 if statements
 if(debounce_switch(4)==1){countL=0;countR=0;}//  12/24 
-if(debounce_switch(5)==1){countL=0;countR=0;}// Unused
+if(debounce_switch(5)==1){countL=0;countR=0;}// Snooze
 if(debounce_switch(6)==1){countL=0;countR=0;}// Unused 
 if(debounce_switch(7)==1){mode=0;countL=0;countR=0;}//Back to mode 0 normal time
 }
@@ -147,7 +140,7 @@ case 5:PORTB=(0<<SEL0)|(1<<SEL1)|(0<<SEL2);break;//Collon selected
 if(dig==4){PORTA=dec_to_7seg[segment_data[dig-1]]-alarm;}
 else{PORTA=dec_to_7seg[segment_data[dig-1]];}
 asm("nop");
-_delay_ms(.02);//0.02
+_delay_ms(.01);//0.02
  }//end dig
 }
 
@@ -159,7 +152,7 @@ void init_tcnt0(){
   //need to set the interupt for the compare match  
   TCCR0=0x00;//reset to zero
   TCCR0 |=  (1<<WGM01) | (0<<CS02)|(0<<CS01)|(1<<CS00);  //CTC mode,no prescaler
-  OCR0 =25;          //250 was calculated
+  OCR0 =20;          //250 was calculated
 }
 
 //  startup_test runs once at the beginning of main, this is just used
@@ -196,7 +189,7 @@ ISR(TIMER0_COMP_vect){
 check_sw(); //checks switches	
 spiRW(mode);//Updates mode on bar graph and gets new encoder value
 count_t++;
-if(count_t==627)
+if(count_t==781)
 {
 PORTC ^=1<<0;
 count++;
@@ -221,14 +214,27 @@ startup_test(); //Runs through all digits to ensure they are working
 spiRW(mode);  //initial mode displayed on bar graph (all off)
 sei();         //enable global interrupts
 while(1){
-if(min<0){min=59;hour--;}
-if(hour<0){hour=24;}
+if(alarm==128 && min==alarm_min && hour==alarm_hour)
+{
+//Do alarm stuff    this will only sound alarm for 1 min
+// check switch for snooze, add 10 min to alarm
+}
 if(min==60){hour++;min=0;}
 if(hour==25){hour=0;}
 switch(mode){
 case 0:segsum((hour*100)+min);update_LED();break;
-case 1:segsum((hour*100)+min);update_LED(); min+=countR;hour+=countL;countR=0;countL=0;count=0;break;
-}
+case 1:segsum((hour*100)+min);update_LED(); min+=countR;hour+=countL;countR=0;countL=0;count=0;
+      if(min<0){min=59;hour--;}
+      if(hour<0){hour=24;}
+      break;
+case 2:segsum((alarm_hour*100)+alarm_min);update_LED();alarm_min+=countR;alarm_hour+=countL;countR=0;countL=0;
+      if(alarm_min<0){alarm_min=59;alarm_hour--;}
+      if(alarm_hour<0){hour=24;}
+      if(alarm_min==60){hour++;min=0;}
+      if(alarm_hour==25){alarm_hour=0;}
+      break;
+
+}//switch(mode)
 }//while
 return 0;
 }//main
