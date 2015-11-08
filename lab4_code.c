@@ -27,6 +27,9 @@
 uint8_t segment_data[5]; 
 int8_t min=49;            //Startup time
 int8_t hour=17;           //Startup time
+int8_t alarm=0;           //Alarm starts off
+int8_t alarm_min=30;      //start up time for alram
+int8_t alarm_hour=8;      //This will get changed when alarm is put in EEPROM
 int16_t countL=0;
 int16_t countR=0;
 uint8_t mode=0;            //Used for tracking mode 
@@ -117,14 +120,14 @@ PORTA=0xFF; //turns on PU resistors
 PORTB=(1<<SEL0)|(1<<SEL1)|(1<<SEL2);
 asm("nop");
 asm("nop");
-if(debounce_switch(0)==1){mode =1;countL=0;countR=0;}//toggle the 0 bit 
-if(debounce_switch(1)==1){mode =2;countL=0;countR=0;}//toggle the 1 bit
-if(debounce_switch(2)==1){mode =3;countL=0;countR=0;}//toggle the 0 bit 
-if(debounce_switch(3)==1){mode =4;countL=0;countR=0;}//toggle the 1 bit  LOST 13Hz adding 6 if statements
-if(debounce_switch(4)==1){mode =5;countL=0;countR=0;}//toggle the 0 bit 
-if(debounce_switch(5)==1){mode =6;countL=0;countR=0;}//toggle the 1 bit
-if(debounce_switch(6)==1){mode =7;countL=0;countR=0;}//toggle the 0 bit 
-if(debounce_switch(7)==1){mode =0;countL=0;countR=0;}//toggle the 1 bit
+if(debounce_switch(0)==1){mode =1;countL=0;countR=0;}//Set time 
+if(debounce_switch(1)==1){mode =2;countL=0;countR=0;}//Set alarm time
+if(debounce_switch(2)==1){alarm ^=1<<7;countL=0;countR=0;}//Alarm on/off 
+if(debounce_switch(3)==1){countL=0;countR=0;}//Radio on/off  LOST 13Hz adding 6 if statements
+if(debounce_switch(4)==1){countL=0;countR=0;}//  12/24 
+if(debounce_switch(5)==1){countL=0;countR=0;}// Unused
+if(debounce_switch(6)==1){countL=0;countR=0;}// Unused 
+if(debounce_switch(7)==1){mode=0;countL=0;countR=0;}//Back to mode 0 normal time
 }
 
 void update_LED(){
@@ -141,7 +144,8 @@ case 3:PORTB=(1<<SEL0)|(0<<SEL1)|(0<<SEL2);break;//Y1 SELECTED
 case 4:PORTB=(0<<SEL0)|(0<<SEL1)|(0<<SEL2);break;//Y0 SELECTED
 case 5:PORTB=(0<<SEL0)|(1<<SEL1)|(0<<SEL2);break;//Collon selected
 }
-PORTA=dec_to_7seg[segment_data[dig-1]];
+if(dig==4){PORTA=dec_to_7seg[segment_data[dig-1]]-alarm;}
+else{PORTA=dec_to_7seg[segment_data[dig-1]];}
 asm("nop");
 _delay_ms(.02);//0.02
  }//end dig
@@ -192,7 +196,7 @@ ISR(TIMER0_COMP_vect){
 check_sw(); //checks switches	
 spiRW(mode);//Updates mode on bar graph and gets new encoder value
 count_t++;
-if(count_t==620)
+if(count_t==627)
 {
 PORTC ^=1<<0;
 count++;
