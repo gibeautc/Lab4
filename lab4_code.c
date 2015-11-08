@@ -154,7 +154,7 @@ void init_tcnt0(){
   TIMSK |=(1<<OCIE0);
   //need to set the interupt for the compare match  
   TCCR0=0x00;//reset to zero
-  TCCR0 |=  (1<<WGM01) | (0<<CS02)|(0<<CS01)|(1<<CS00);  //CTC mode,256 prescaler
+  TCCR0 |=  (1<<WGM01) | (0<<CS02)|(0<<CS01)|(1<<CS00);  //CTC mode,no prescaler
   OCR0 =25;          //250 was calculated
 }
 
@@ -192,7 +192,7 @@ ISR(TIMER0_COMP_vect){
 check_sw(); //checks switches	
 spiRW(mode);//Updates mode on bar graph and gets new encoder value
 count_t++;
-if(count_t==631)//125 was calculated
+if(count_t==635)//640 calc 631 shows 500ms but i think its off a bit
 {
 PORTC ^=1<<0;
 count++;
@@ -217,7 +217,7 @@ startup_test(); //Runs through all digits to ensure they are working
 spiRW(mode);  //initial mode displayed on bar graph (all off)
 sei();         //enable global interrupts
 while(1){
-if(min<0){min=0;hour--;}
+if(min<0){min=59;hour--;}
 if(hour<0){hour=24;}
 if(min==60){hour++;min=0;}
 if(hour==25){hour=0;}
