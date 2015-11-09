@@ -16,7 +16,8 @@
 #include <avr/io.h>
 #include <util/delay.h>
 #include <avr/interrupt.h>//added
-
+#include <stdlib.h>
+#include "LCDDriver.h" 
 //volatile uint8_t ext_count=0; not being used at this time
 #define SEL0 4
 #define SEL1 5
@@ -252,7 +253,7 @@ if(alarm==128 && min==alarm_min && hour==alarm_hour)
 // check switch for snooze, add 10 min to alarm
 }
 if(min==60){hour++;min=0;}
-if(hour==25){hour=0;}
+if(hour==24){hour=0;}
 switch(mode){
 case 0:segsum((hour*100)+min);update_LED();break;
 case 1:segsum((hour*100)+min);update_LED(); min+=countR;hour+=countL;countR=0;countL=0;count=0;
