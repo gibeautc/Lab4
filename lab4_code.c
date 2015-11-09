@@ -144,7 +144,7 @@ _delay_ms(.01);//0.02
  }//end dig
 }
 
-//sets up the timer
+//sets up the timer 0 for RTC
 void init_tcnt0(){
   ASSR  |=(1<<AS0);     //run off external 32khz osc (TOSC)
   TIMSK=0x00; //reset to all 0
@@ -155,8 +155,15 @@ void init_tcnt0(){
   OCR0 =20;          //250 was calculated
 }
 
-//  startup_test runs once at the beginning of main, this is just used
-//  to show all digits and ensure wiring is correct at start up
+//Sets up timer 2 for PWM dimming control
+void init_tcnt2(){
+TCCR2=(0<<FOC2)|(1<<WGM20)|(1<<COM21)|(1<<COM20)|(0<<WGM21)|(0<<CS22)|(0<<CS21)|(1<<CS20);
+OCR2=100;//Starting value  about the lowest i would go
+
+//no output compare,PWM phase correct, Set OC2 on match up count, clean on compare down count, 64 prescale
+//this should give a freq of about 490hz 
+
+}//init_tcnt2 end
 void startup_test()
 {
  DDRA= 0xFF;//port A all output  (segments of display)
@@ -184,6 +191,13 @@ void startup_test()
  PORTA=0xFF;
 }//End startup_test
 
+void ADC_init(){
+ADMUX|=(0<<REFS1)|(1<<REFS0)|(1<<ADLAR)|(0<<MUX4)|(0<<MUX3)|(0<<MUX2)|(0<<MUX1)|(0<<MUX0);
+//selects ref voltage,left justify also needs to select chan
+ADCSRA|=(1<<ADEN)|(1<<ADSC)|(0<<ADFR);//Enable, take measurment, and single mode
+
+
+}//end ADC_init
 
 ISR(TIMER0_COMP_vect){	
 check_sw(); //checks switches	
@@ -207,13 +221,31 @@ DDRC=(1<<0)|(1<<1);// Sets bit 6 and 7 to output, used for checking timing
 PORTC=(1<<0)|(1<<1);//Sets both bits high to start wit
 segment_data[4]=10;
 init_tcnt0();               //initalize timer counter zero
+init_tcnt2();
 segsum(count);//sets up the segment data using initial count
 DDRB=0b11110111;//set port bits 4-7 B as outputs  and sets up SPI port
 spi_init();     //sets up SPI 
 startup_test(); //Runs through all digits to ensure they are working
 spiRW(mode);  //initial mode displayed on bar graph (all off)
+ADC_init();
 sei();         //enable global interrupts
 while(1){
+//Dimming Stuff
+//First measurement taken in init, 
+//If clear, read it, do stuff, start conversion again
+if(bit_is_clear(ADCSRA,ADSC))
+{
+OCR2=ADCH;
+//segsum(ADCH);
+ADCSRA|=(1<<ADSC);
+}
+//Write logic one to Start conversion bit  ADSC in ADCSRA
+//will clear when its done
+//only going to use 8 bits, need left justify read ADCH
+//Set ADLAR=1 for left justify in ADCSRA
+//OCR2 range from 0 to 240ish
+//end dimming stuff
+
 if(alarm==128 && min==alarm_min && hour==alarm_hour)
 {
 //Do alarm stuff    this will only sound alarm for 1 min
@@ -233,7 +265,7 @@ case 2:segsum((alarm_hour*100)+alarm_min);update_LED();alarm_min+=countR;alarm_h
       if(alarm_min==60){hour++;min=0;}
       if(alarm_hour==25){alarm_hour=0;}
       break;
-
+     default: update_LED();
 }//switch(mode)
 }//while
 return 0;
