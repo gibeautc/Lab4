@@ -198,7 +198,7 @@ void LCD_PutStr(char *lcd_str) {
 void LCD_SPIInit(void) {
 	DDRF |= 0x08;  //port F bit 3 is enable for LCD
 	PORTB |= 0x00; //port B initialization for SPI
-	DDRB |= 0x07;  //Turn on SS, MOSI, SCLK
+	DDRB |= 0xF7;  //Turn on SS, MOSI, SCLK         modified for lab4, uses other pins for select
 	//Master mode, Clock=clk/2, Cycle half phase, Low polarity, MSB first
 	SPCR = 0x50;
 	SPSR = 0x01;
@@ -220,21 +220,21 @@ void LCD_Init(void) {
 	*/
 	
 	// Set the SPI settings
-	LCD_SPIInit();
+	//LCD_SPIInit();
 
-	DDRF |= 0x08;  // port F bit 3 is the enable strobe for the LCD
-	_delay_ms(15);
+//	DDRF |= 0x08;  // port F bit 3 is the enable strobe for the LCD
+//	_delay_ms(15);
 
 	// request 8 bit interface mode
-	LCD_CMD(0x38);
-	_delay_ms(5);
+//	LCD_CMD(0x38);
+//	_delay_ms(5);
 
 	// display off
-	LCD_CMD(0x08);
-	_delay_ms(2);
+//	LCD_CMD(0x08);
+//	_delay_ms(2);
 
 	// choose entry mode so that the cursor is incremented
-	LCD_CMD(0x06);
+//	LCD_CMD(0x06);
 	
 	/*
 		We can add up to 8 custom characters to the LCD
@@ -244,23 +244,23 @@ void LCD_Init(void) {
 		for each of the 8 rows.
 	*/
 	// Create a custom battery logo in slot 0
-	LCD_CMD(0x40); // <-- address of custom slot 0
-	LCD_DATA(0x0E); // <-- top 5 pixels of icon
-	LCD_DATA(0x1B); // <-- next 5 pixels of icon
-	LCD_DATA(0x11);
-	LCD_DATA(0x11);
-	LCD_DATA(0x11);
-	LCD_DATA(0x11);
-	LCD_DATA(0x11);
-	LCD_DATA(0x1F); // <-- bottom 5 pixels of icon
+//	LCD_CMD(0x40); // <-- address of custom slot 0
+//	LCD_DATA(0x0E); // <-- top 5 pixels of icon
+//	LCD_DATA(0x1B); // <-- next 5 pixels of icon
+//	LCD_DATA(0x11);
+//	LCD_DATA(0x11);
+//	LCD_DATA(0x11);
+//	LCD_DATA(0x11);
+//	LCD_DATA(0x11);
+//	LCD_DATA(0x1F); // <-- bottom 5 pixels of icon
 	
 	/*
 		Clear the screen and enable the LCD
 	*/	
 	// clear display
-	LCD_CMD(0x01);
-	_delay_ms(5);
+//	LCD_CMD(0x01);
+//	_delay_ms(5);
 	
 	// display on
-	LCD_CMD(0x0C);
+//	LCD_CMD(0x0C);
 }

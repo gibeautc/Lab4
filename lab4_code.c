@@ -17,7 +17,8 @@
 #include <util/delay.h>
 #include <avr/interrupt.h>//added
 #include <stdlib.h>
-#include "LCDDriver.h" 
+
+#include "LCDDriver.h"
 //volatile uint8_t ext_count=0; not being used at this time
 #define SEL0 4
 #define SEL1 5
@@ -61,12 +62,12 @@ void segsum(int16_t sum) {
 
 
 void spiRW(uint8_t bar){
-  PORTF&=(0<<bar_clk);//reads decoder into registor
-  PORTF|=(1<<bar_clk);//returns to normal mode
+  PORTC|=(0<<bar_clk);//reads decoder into registor
+  PORTC|=(1<<bar_clk);//returns to normal mode
   SPDR=bar;//Sends out byte passed into funciton to bar graph
   while(bit_is_clear(SPSR,SPIF)){}  //wait for byte to send
   dec_state=SPDR;                  //reads byte in from decoders
-  PORTF&=(0<<bar_clk);            
+  PORTC&=(0<<bar_clk);            
   if(dec_state_last<128){dec_state_last=dec_state;}//takes care of setting this the first time
  
 //Following nested if statements check current state vs last state to determine direction of rotation
@@ -82,13 +83,13 @@ void spiRW(uint8_t bar){
   }
 
   dec_state_last=dec_state; //resets last state
-  PORTF|=(1<<bar_clk);
+  PORTC|=(1<<bar_clk);
 }
 
 //Sets up SPI port 
 void spi_init(void){
 //DDRB is already setup in main 
- DDRF=(1<<bar_clk);
+ DDRC=(1<<bar_clk);
  SPCR = (1<<SPE) | (1<<MSTR);   //master mode
  SPSR = (1<<SPI2X);             //sets speed
 }//spi_init
@@ -218,14 +219,18 @@ else{segment_data[4]=11;}
 //*****************************************************************
 int main()
 {
+DDRB=0b11110111;
+DDRF=(1<<bar_clk)|(1<<3);
 DDRC=(1<<0)|(1<<1);// Sets bit 6 and 7 to output, used for checking timing
 PORTC=(1<<0)|(1<<1);//Sets both bits high to start wit
 segment_data[4]=10;
 init_tcnt0();               //initalize timer counter zero
 init_tcnt2();
 segsum(count);//sets up the segment data using initial count
-DDRB=0b11110111;//set port bits 4-7 B as outputs  and sets up SPI port
+//DDRB=0b11110111;//set port bits 4-7 B as outputs  and sets up SPI port
 spi_init();     //sets up SPI 
+//LCD_Init();
+//LCD_PutStr("Tesing");
 startup_test(); //Runs through all digits to ensure they are working
 spiRW(mode);  //initial mode displayed on bar graph (all off)
 ADC_init();
@@ -237,15 +242,8 @@ while(1){
 if(bit_is_clear(ADCSRA,ADSC))
 {
 OCR2=ADCH;
-//segsum(ADCH);
 ADCSRA|=(1<<ADSC);
 }
-//Write logic one to Start conversion bit  ADSC in ADCSRA
-//will clear when its done
-//only going to use 8 bits, need left justify read ADCH
-//Set ADLAR=1 for left justify in ADCSRA
-//OCR2 range from 0 to 240ish
-//end dimming stuff
 
 if(alarm==128 && min==alarm_min && hour==alarm_hour)
 {
