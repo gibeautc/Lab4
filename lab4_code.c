@@ -16,6 +16,7 @@
 #include <avr/io.h>
 #include <util/delay.h>
 #include <avr/interrupt.h>//added
+#include "LCDDriver.h"
 
 //volatile uint8_t ext_count=0; not being used at this time
 #define SEL0 4
@@ -217,6 +218,7 @@ else{segment_data[4]=11;}
 //*****************************************************************
 int main()
 {
+LCD_Init();
 DDRC=(1<<0)|(1<<1);// Sets bit 6 and 7 to output, used for checking timing
 PORTC=(1<<0)|(1<<1);//Sets both bits high to start wit
 segment_data[4]=10;
