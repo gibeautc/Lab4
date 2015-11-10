@@ -9,14 +9,15 @@
 // PORT B is used for SPI and binary output for decoder for LED digits
 // SPI port is used to send data to the bar graph, and read data in from Encoders
 // Since each SPI device is only a one way data stream, these can be done at the same time
-#define F_CPU 16000000 // cpu speed in hertz 
+#include <avr/io.h>
+//#define F_CPU 16000000 // cpu speed in hertz 
 #define TRUE 1
 #define FALSE 0
 #define bar_clk 2  //on port F
-#include <avr/io.h>
+//#include <avr/io.h>
 #include <util/delay.h>
 #include <avr/interrupt.h>//added
-#include "LCDDriver.h"
+#include "lcd_functions.h"
 
 //volatile uint8_t ext_count=0; not being used at this time
 #define SEL0 4
@@ -25,11 +26,14 @@
 #define PWM 7
 //*******************Global*****************************************
 //holds data to be sent to the segments. logic zero turns segment on
+uint8_t line1[16]=" ALARM          ";
+uint8_t line2[16]="   Alarm  off   ";
+uint8_t lcd_count=1;
 uint8_t segment_data[5]; 
-int8_t min=49;            //Startup time
-int8_t hour=17;           //Startup time
+int8_t min=30;            //Startup time
+int8_t hour=8;           //Startup time
 int8_t alarm=0;           //Alarm starts off
-int8_t alarm_min=30;      //start up time for alram
+int8_t alarm_min=31;      //start up time for alram
 int8_t alarm_hour=8;      //This will get changed when alarm is put in EEPROM
 int16_t countL=0;
 int16_t countR=0;
@@ -88,7 +92,8 @@ void spiRW(uint8_t bar){
 //Sets up SPI port 
 void spi_init(void){
 //DDRB is already setup in main 
- DDRF=(1<<bar_clk);
+ DDRF=(1<<bar_clk)|(1<<3);
+ 
  SPCR = (1<<SPE) | (1<<MSTR);   //master mode
  SPSR = (1<<SPI2X);             //sets speed
 }//spi_init
@@ -114,9 +119,14 @@ PORTA=0xFF; //turns on PU resistors
 PORTB=(1<<SEL0)|(1<<SEL1)|(1<<SEL2);
 asm("nop");
 asm("nop");
+//line2[11] and 12 for alarm  oXX
 if(debounce_switch(0)==1){mode =1;countL=0;countR=0;}//Set time 
 if(debounce_switch(1)==1){mode =2;countL=0;countR=0;}//Set alarm time
-if(debounce_switch(2)==1){alarm ^=1<<7;countL=0;countR=0;}//Alarm on/off 
+if(debounce_switch(2)==1){
+alarm ^=1<<7;
+if(bit_is_clear(alarm,7)){line2[11]='f';line2[12]='f';}
+if(bit_is_set(alarm,7)){line2[11]='n';line2[12]=' ';}
+countL=0;countR=0;}//Alarm on/off 
 if(debounce_switch(3)==1){countL=0;countR=0;}//Radio on/off  LOST 13Hz adding 6 if statements
 if(debounce_switch(4)==1){countL=0;countR=0;}//  12/24 
 if(debounce_switch(5)==1){countL=0;countR=0;}// Snooze
@@ -147,6 +157,7 @@ _delay_ms(.01);//0.02
 
 //sets up the timer 0 for RTC
 void init_tcnt0(){
+  
   ASSR  |=(1<<AS0);     //run off external 32khz osc (TOSC)
   TIMSK=0x00; //reset to all 0
   TIMSK |=(1<<OCIE0);
@@ -204,6 +215,16 @@ ISR(TIMER0_COMP_vect){
 check_sw(); //checks switches	
 spiRW(mode);//Updates mode on bar graph and gets new encoder value
 count_t++;
+if(count_t%10==0){
+  //LCD update
+  if(lcd_count==0){cursor_home();}
+  if(lcd_count<16){char2lcd(line1[lcd_count]);}
+  else{char2lcd(line2[lcd_count-16]);}
+  lcd_count++;
+  if(lcd_count==16){home_line2();}
+  if(lcd_count==32){lcd_count=0;}
+
+}//end if
 if(count_t==781)
 {
 PORTC ^=1<<0;
@@ -218,7 +239,6 @@ else{segment_data[4]=11;}
 //*****************************************************************
 int main()
 {
-LCD_Init();
 DDRC=(1<<0)|(1<<1);// Sets bit 6 and 7 to output, used for checking timing
 PORTC=(1<<0)|(1<<1);//Sets both bits high to start wit
 segment_data[4]=10;
@@ -227,6 +247,8 @@ init_tcnt2();
 segsum(count);//sets up the segment data using initial count
 DDRB=0b11110111;//set port bits 4-7 B as outputs  and sets up SPI port
 spi_init();     //sets up SPI 
+lcd_init();
+cursor_off();
 startup_test(); //Runs through all digits to ensure they are working
 spiRW(mode);  //initial mode displayed on bar graph (all off)
 ADC_init();
@@ -248,11 +270,13 @@ ADCSRA|=(1<<ADSC);
 //OCR2 range from 0 to 240ish
 //end dimming stuff
 
-if(alarm==128 && min==alarm_min && hour==alarm_hour)
+if(bit_is_set(alarm,7) && min==alarm_min && hour==alarm_hour)
 {
 //Do alarm stuff    this will only sound alarm for 1 min
 // check switch for snooze, add 10 min to alarm
-}
+
+line1[1]='A';line1[2]='L';line1[3]='A';line1[4]='R';line1[5]='M';}
+if(bit_is_clear(alarm,7)){line1[1]=' ';line1[2]=' ';line1[3]=' ';line1[4]=' ';line1[5]=' ';}//end else
 if(min==60){hour++;min=0;}
 if(hour==25){hour=0;}
 switch(mode){
