@@ -65,6 +65,8 @@ void segsum(int16_t sum) {
 
 
 void spiRW(uint8_t bar){
+  SPDR=bar;
+  while(bit_is_clear(SPSR,SPIF)){}
   PORTF&=(0<<bar_clk);//reads decoder into registor
   PORTF|=(1<<bar_clk);//returns to normal mode
   SPDR=bar;//Sends out byte passed into funciton to bar graph
@@ -167,6 +169,11 @@ void init_tcnt0(){
   OCR0 =20;          //250 was calculated
 }
 
+void init_tcnt1(){
+
+}
+
+
 //Sets up timer 2 for PWM dimming control
 void init_tcnt2(){
 TCCR2=(0<<FOC2)|(1<<WGM20)|(1<<COM21)|(1<<COM20)|(0<<WGM21)|(0<<CS22)|(0<<CS21)|(1<<CS20);
@@ -243,6 +250,7 @@ DDRC=(1<<0)|(1<<1);// Sets bit 6 and 7 to output, used for checking timing
 PORTC=(1<<0)|(1<<1);//Sets both bits high to start wit
 segment_data[4]=10;
 init_tcnt0();               //initalize timer counter zero
+init_tcnt1();
 init_tcnt2();
 segsum(count);//sets up the segment data using initial count
 DDRB=0b11110111;//set port bits 4-7 B as outputs  and sets up SPI port
