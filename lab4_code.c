@@ -29,13 +29,14 @@
 uint8_t line1[16]=" ALARM          ";
 uint8_t line2[16]="   Alarm  off   ";
 uint8_t lcd_count=1;
-uint8_t volume=50;
+uint8_t volume=150;
 uint8_t segment_data[5]; 
 int8_t min=30;            //Startup time
 int8_t hour=8;           //Startup time
 int8_t alarm=0;           //Alarm starts off
 int8_t alarm_min=31;      //start up time for alram
 int8_t alarm_hour=8;      //This will get changed when alarm is put in EEPROM
+int8_t snooze=0;
 int16_t countL=0;
 int16_t countR=0;
 uint8_t mode=0;            //Used for tracking mode 
@@ -127,12 +128,12 @@ if(debounce_switch(0)==1){mode =1;countL=0;countR=0;}//Set time
 if(debounce_switch(1)==1){mode =2;countL=0;countR=0;}//Set alarm time
 if(debounce_switch(2)==1){
 alarm ^=1<<7;
-if(bit_is_clear(alarm,7)){line2[11]='f';line2[12]='f';}
+if(bit_is_clear(alarm,7)){line2[11]='f';line2[12]='f';snooze=0;}
 if(bit_is_set(alarm,7)){line2[11]='n';line2[12]=' ';}
 countL=0;countR=0;}//Alarm on/off 
 if(debounce_switch(3)==1){countL=0;countR=0;}//Radio on/off  LOST 13Hz adding 6 if statements
 if(debounce_switch(4)==1){countL=0;countR=0;}//  12/24 
-if(debounce_switch(5)==1){countL=0;countR=0;}// Snooze
+if(debounce_switch(5)==1){countL=0;countR=0;snooze++;}// Snooze
 if(debounce_switch(6)==1){countL=0;countR=0;}// Unused 
 if(debounce_switch(7)==1){mode=0;countL=0;countR=0;}//Back to mode 0 normal time
 }
@@ -176,8 +177,8 @@ void init_tcnt1(){
  //Compare mode, OC1A,B,C disconected
  //CTC Mode 1<<WGM12   1024 prescale
  //with prescale its running on 7812.5 Hz
- TCCR1B=(1<<WGM12)|(1<<CS12)|(1<<CS10);
- OCR1A=0x003;  //should produce tone of 1116 Hz
+ TCCR1B=(1<<WGM12)|(1<<CS12)|(0<<CS10);
+ OCR1A=0x10;  //should produce tone of 1116 Hz
  TIMSK|=(1<<OCIE1A);
 }//timer1 end
 
@@ -193,7 +194,7 @@ void init_tcnt2(){
 //timer3 will be used for volume control  should be smoothed to be 1-4 volts
 //20% simulation shows 1.1V   OCR value of 51
 //80% shows 4V                OCR value of 204
-void init_tcnt3()
+void init_tcnt3()//PORTE 3
 {//COM3A1=1  COM3A0=0   should set OC3A when down counting, clear when up counting
  //phase correct   mode 11   WGM33,31,30 =1
  TCCR3A=(1<<COM3A1)|(1<<WGM32)|(1<<WGM30);
@@ -302,12 +303,16 @@ if(bit_is_clear(ADCSRA,ADSC))
 OCR2=ADCH;
 ADCSRA|=(1<<ADSC);
 }
-if(bit_is_set(alarm,7) && min==alarm_min && hour==alarm_hour)
+if(bit_is_set(alarm,7) && min==alarm_min+snooze && hour==alarm_hour)
 {
  //Do alarm stuff    this will only sound alarm for 1 min
+ TCCR1B|=(1<<CS12);
  line1[1]='A';line1[2]='L';line1[3]='A';line1[4]='R';line1[5]='M';
 }
-if(bit_is_clear(alarm,7)){line1[1]=' ';line1[2]=' ';line1[3]=' ';line1[4]=' ';line1[5]=' ';}//end else
+if(bit_is_clear(alarm,7)||min!=alarm_min+snooze)
+{line1[1]=' ';line1[2]=' ';line1[3]=' ';line1[4]=' ';line1[5]=' ';
+ TCCR1B &= ~(1<<CS12);
+}//end else
 if(min==60){hour++;min=0;}
 if(hour==25){hour=0;}
 switch(mode){
