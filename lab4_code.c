@@ -314,7 +314,7 @@ if(bit_is_clear(alarm,7)||min!=alarm_min+snooze)
  TCCR1B &= ~(1<<CS12);
 }//end else
 if(min==60){hour++;min=0;}
-if(hour==25){hour=0;}
+if(hour==24){hour=0;}
 switch(mode){
 case 0:segsum((hour*100)+min);update_LED();volume+=(countL*6);countL=0;break;
 case 1:segsum((hour*100)+min);update_LED();min+=countR;hour+=countL;countR=0;countL=0;count=0;
