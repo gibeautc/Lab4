@@ -18,6 +18,9 @@
 #include <util/delay.h>
 #include <avr/interrupt.h>//added
 #include "lcd_functions.h"
+#include "lm73_functions_skel.h"
+#include "twi_master.h"
+#include "uart_functions.h"
 
 //volatile uint8_t ext_count=0; not being used at this time
 #define SEL0 4
@@ -26,9 +29,16 @@
 #define PWM 7
 //*******************Global*****************************************
 //holds data to be sent to the segments. logic zero turns segment on
+int8_t remote_temp=100;
+volatile uint16_t lm73_temp;
+
+extern uint8_t lm73_wr_buf[];
+extern uint8_t lm73_rd_buf[];
 uint8_t line1[16]=" ALARM          ";
 uint8_t line2[16]="   Alarm  off   ";
-uint8_t lcd_count=1;
+uint8_t temp_array[16]=" O:    I:       ";
+//outside temp in 3-4  inside in 9-10
+uint8_t lcd_count=0;
 uint8_t volume=150;
 uint8_t segment_data[5]; 
 int8_t min=30;            //Startup time
@@ -43,12 +53,25 @@ uint8_t mode=0;            //Used for tracking mode
 uint8_t inactive=0;
 uint8_t count=0;
 volatile uint16_t count_t=0;
+uint8_t count_2=0;
 uint8_t dec_state=0;        //current state of decoders
 uint8_t dec_state_last=0;  //previous state of decoders
 uint8_t inc=1;//This is the increment amount set by buttons 
 //decimal to 7-segment LED display encodings, logic "0" turns on segment
 uint8_t dec_to_7seg[12]={192,249,164,176,153,146,131,248,128,152,255,4} ;
 uint8_t up=1;
+uint8_t local_temp=0;
+
+
+int16_t convert_temp(uint16_t temp)
+{
+ temp=(temp>>7);
+ temp=temp*1.8;
+ temp=temp+32;
+ return temp;
+}
+
+
 //index 10 is used as the 'blank' digit
 
 //                                   segment_sum
@@ -169,7 +192,7 @@ void init_tcnt0(){
   //need to set the interupt for the compare match  
   TCCR0=0x00;//reset to zero
   TCCR0 |=  (1<<WGM01) | (0<<CS02)|(0<<CS01)|(1<<CS00);  //CTC mode,no prescaler
-  OCR0 =20;          //250 was calculated
+  OCR0 =40;          //250 was calculated
 }//timeer0 end
 
 //Timer 1 is for alarm tone
@@ -245,37 +268,56 @@ PORTC ^=(1<<2); //Toggle pin
 }
 
 ISR(TIMER0_COMP_vect){	
-check_sw(); //checks switches	
-spiRW(mode);//Updates mode on bar graph and gets new encoder value
+//check_sw(); //checks switches	
+//spiRW(mode);//Updates mode on bar graph and gets new encoder value
 count_t++;
-if(count_t%10==0){
-  //LCD update
-  if(lcd_count==0){cursor_home();}
-  if(lcd_count<16){char2lcd(line1[lcd_count]);}
-  else{char2lcd(line2[lcd_count-16]);}
-  lcd_count++;
-  if(lcd_count==16){home_line2();}
-  if(lcd_count==32){lcd_count=0;}
+if (count_t>391){count_t=0;}
 
-}//end if
-if(count_t==781)
-{
-PORTC ^=1<<0;
-count++;
-if(count==120){min++;count=0;}
-count_t=0;
-if(segment_data[4]==11 && mode==0){segment_data[4]=10;}
-else{segment_data[4]=11;}
+if(count_t%10==0){
 }
+
+switch(count_t)
+{
+case 35:uart_putc(100);
+         break;
+case 45:remote_temp=uart_getc();
+        if(remote_temp%10==remote_temp){temp_array[3]=remote_temp+'0';break;}
+        temp_array[3]=(remote_temp/10)+'0';
+        temp_array[4]=(remote_temp%10)+'0';
+        break;
+case 391://PORTC ^=1<<0;
+         count++;
+         if(count==120){min++;count=0;}
+         //count_t=0;
+         if(segment_data[4]==11 && mode==0){segment_data[4]=10;}
+         else{segment_data[4]=11;}
+         break;
+      
+case 65:lm73_temp=lm73_rd_buf[0];break;
+case 75:lm73_temp=(lm73_temp<<8);break;
+case 85:lm73_temp |=lm73_rd_buf[1];break;
+case 95:lm73_temp =convert_temp(lm73_temp);
+       
+case 105:local_temp=lm73_temp; //8 bit only now
+         if(local_temp%10==local_temp){temp_array[8]=local_temp+'0';break;}
+         temp_array[9]=(local_temp/10)+'0';
+         temp_array[10]=(local_temp%10)+'0';
+         
+         //PUT TEMP in LCD string here
+         break;
+default: check_sw();
+         //spiRW(mode);
+         break;
+}//switch
 }//IRS
 
 //*****************************************************************
 int main()
 {
 //Setup******************************************************************
-DDRC=(1<<0)|(1<<1);// Sets bit 6 and 7 to output, used for checking timing
+//DDRC=(1<<0)|(1<<1);// Sets bit 6 and 7 to output, used for checking timing
 DDRE=(1<<3);
-PORTC=(1<<0)|(1<<1);//Sets both bits high to start wit
+//PORTC=(1<<0)|(1<<1);//Sets both bits high to start wit
 segment_data[4]=10;
 init_tcnt0();      //RTC  **KEEP AS FIRST INIT, it resets TIMSK
 init_tcnt1();      //Alarm tone 
@@ -286,12 +328,37 @@ DDRB=0b11110111;//set port bits 4-7 B as outputs  and sets up SPI port
 spi_init();     //sets up SPI 
 lcd_init();
 cursor_off();
-startup_test(); //Runs through all digits to ensure they are working
+//startup_test(); //Runs through all digits to ensure they are working
 spiRW(mode);  //initial mode displayed on bar graph (all off)
 ADC_init();
+init_twi();
+uart_init();
+lm73_wr_buf[0]=0;
+twi_start_wr(0x90,lm73_wr_buf,1);
+
+//startup_test();
 sei();         //enable global interrupts
 //End setup**************************************************************
 while(1){
+spiRW(mode);
+count_2++;
+//if(count_2==0xFF){count_2=0;}
+
+if(count_2%200==0){twi_start_rd(0x90,lm73_rd_buf,2);_delay_ms(2);}
+
+if(count_2%50==0){
+if(lcd_count==0){cursor_home();}
+if(lcd_count<16){char2lcd(line1[lcd_count]);}
+//cursor_home();
+//char2lcd(count_t);
+else{char2lcd(line2[lcd_count-16]);}
+lcd_count++;
+if(lcd_count==16){home_line2();}
+if(lcd_count==32){lcd_count=0;}
+}
+//temp conversion to F
+//lm73_temp=convert_temp(lm73_temp);
+
 //volume
 if(volume<50){volume=50;}
 if(volume>204){volume=204;}
@@ -307,16 +374,22 @@ if(bit_is_set(alarm,7) && min==alarm_min+snooze && hour==alarm_hour)
 {
  //Do alarm stuff    this will only sound alarm for 1 min
  TCCR1B|=(1<<CS12);
- line1[1]='A';line1[2]='L';line1[3]='A';line1[4]='R';line1[5]='M';
+ //line1[1]='A';line1[2]='L';line1[3]='A';line1[4]='R';line1[5]='M';
 }
 if(bit_is_clear(alarm,7)||min!=alarm_min+snooze)
-{line1[1]=' ';line1[2]=' ';line1[3]=' ';line1[4]=' ';line1[5]=' ';
+{//line1[1]=' ';line1[2]=' ';line1[3]=' ';line1[4]=' ';line1[5]=' ';
  TCCR1B &= ~(1<<CS12);
 }//end else
 if(min==60){hour++;min=0;}
 if(hour==24){hour=0;}
 switch(mode){
-case 0:segsum((hour*100)+min);update_LED();volume+=(countL*6);countL=0;break;
+case 0:segsum((hour*100)+min);
+       update_LED();
+       volume+=(countL*6);
+       countL=0;
+       uint8_t i;
+       for(i=0;i<16;i++){line1[i]=temp_array[i];}
+       break;
 case 1:segsum((hour*100)+min);update_LED();min+=countR;hour+=countL;countR=0;countL=0;count=0;
       if(min<0){min=59;hour--;}
       if(hour<0){hour=24;}

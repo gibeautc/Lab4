@@ -1,7 +1,7 @@
 SHELL               = /bin/bash
 PRG                 = lab4_code
-OBJS                = lab4_code.o lcd_functions.o 
-SRCS                = lab4_code.c lcd_functions.c 
+OBJS                = lab4_code.o lcd_functions.o uart_functions.o lm73_functions_skel.o twi_master.o
+SRCS                = lab4_code.c lcd_functions.c uart_functions.c lm73_functions_skel.c twi_master.c
 MCU_TARGET          = atmega128
 F_CPU               = 16000000UL
 PROGRAMMER_TARGET   = m128
