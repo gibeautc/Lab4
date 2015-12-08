@@ -21,22 +21,34 @@
 #include "lm73_functions_skel.h"
 #include "twi_master.h"
 #include "uart_functions.h"
-#include "si4734.h"
+//#include "si4734.h"
 
 //volatile uint8_t ext_count=0; not being used at this time
 #define SEL0 4
 #define SEL1 5
 #define SEL2 6
 #define PWM 7
+#define FM_TUNE_FREQ 0x20
+#define FM_PWR_UP    0x01
+#define PWR_DOWN     0x11
+#define FM_TUNE_STATUS_IN_TACK 0x01
+#define GPO_IEN_STCIEN  0x0001
+#define GPO_IEN  0x0001
+#define SET_PROPERTY 0x12
+#define FM_RSQ_STATUS 0x23
+#define FM_RSQ_STATUS_IN_INTACK 0x01
+
+#define SI4734_ADDRESS  0x22
 //*******************Global*****************************************
 //holds data to be sent to the segments. logic zero turns segment on
 
-volatile uint16_t current_fm_freq=9990; //krkt default
-extern uint8_t si4734_wr_buf[9];
-extern uint8_t si4734_rd_buf[9];
-extern uint8_t si4734_tune_status_buf[8];
-extern volatile uint8_t STC_interrupt;
-
+//volatile uint16_t current_fm_freq=9990; //krkt default
+uint8_t si4734_wr_buf[9];//not sure we ever use 9 on either of these
+uint8_t si4734_rd_buf[9];
+uint8_t si4734_tune_status_buf[8];
+volatile uint8_t STC_interrupt;
+uint16_t current_fm_freq;
+uint8_t radio=0;
 int8_t remote_temp=100;
 volatile uint16_t lm73_temp;
 extern uint8_t lm73_wr_buf[];
@@ -68,8 +80,8 @@ uint8_t inc=1;//This is the increment amount set by buttons
 uint8_t dec_to_7seg[12]={192,249,164,176,153,146,131,248,128,152,255,4} ;
 uint8_t up=1;
 uint8_t local_temp=0;
-
-
+uint8_t radio_rs=0;
+uint16_t tune_time=20000;
 int16_t convert_temp(uint16_t temp)
 {
  temp=(temp>>7);
@@ -161,7 +173,9 @@ alarm ^=1<<7;
 if(bit_is_clear(alarm,7)){line2[11]='f';line2[12]='f';snooze=0;}
 if(bit_is_set(alarm,7)){line2[11]='n';line2[12]=' ';}
 countL=0;countR=0;}//Alarm on/off 
-if(debounce_switch(3)==1){countL=0;countR=0;}//Radio on/off  LOST 13Hz adding 6 if statements
+if(debounce_switch(3)==1){if(mode==0){mode=3;} else if(mode==3){mode=0;}   
+  countL=0;
+  countR=0;}//Radio on/off  LOST 13Hz adding 6 if statements
 if(debounce_switch(4)==1){countL=0;countR=0;}//  12/24 
 if(debounce_switch(5)==1){countL=0;countR=0;snooze++;}// Snooze
 if(debounce_switch(6)==1){countL=0;countR=0;}// Unused 
@@ -271,13 +285,67 @@ ADCSRA|=(1<<ADEN)|(1<<ADSC)|(0<<ADFR);//Enable, take measurment, and single mode
 //Radio "ready" interupt
 ISR(INT7_vect){STC_interrupt=TRUE;}
 
+void fm_tune_freq(){
 
-
-//Alarm tone toggle
-ISR(TIMER1_COMPA_vect){
-//Toggle output pint PortC pin 2
-PORTC ^=(1<<2); //Toggle pin
+si4734_wr_buf[0]=0x20;//check on buffer
+si4734_wr_buf[1]=0x00;
+si4734_wr_buf[2]=(uint8_t)(current_fm_freq>>8);//Add current
+si4734_wr_buf[3]=(uint8_t)(current_fm_freq);
+si4734_wr_buf[4]=0x00;
+STC_interrupt=FALSE;
+twi_start_wr(SI4734_ADDRESS,si4734_wr_buf,5);//******Add address
+while(!STC_interrupt){}//Spin till complete
 }
+
+void set_property(uint16_t property,uint16_t property_value){
+
+si4734_wr_buf[0]=SET_PROPERTY;
+si4734_wr_buf[1]=0x00;
+si4734_wr_buf[2]=(uint8_t)(property>>8);
+si4734_wr_buf[3]=(uint8_t)(property);
+si4734_wr_buf[4]=(uint8_t)(property_value>>8);
+si4734_wr_buf[5]=(uint8_t)(property_value);
+twi_start_wr(SI4734_ADDRESS,si4734_wr_buf,6);
+_delay_ms(10);
+
+}//end set property
+
+
+
+void fm_pwr_up(){
+//radio_reset();
+
+current_fm_freq=9990;
+si4734_wr_buf[0]=FM_PWR_UP;    //***********ADD
+si4734_wr_buf[1]=0x50;
+si4734_wr_buf[2]=0x05;
+twi_start_wr(SI4734_ADDRESS, si4734_wr_buf,3);
+_delay_ms(120);
+set_property(GPO_IEN,GPO_IEN_STCIEN);//Check all this shit
+}//end fm power up
+
+
+
+void radio_pwr_dwn(){
+si4734_wr_buf[0]=0x11;
+twi_start_wr(SI4734_ADDRESS,si4734_wr_buf,1);
+_delay_us(310);
+
+}//end power down
+
+void fm_rsq_status(){
+si4734_wr_buf[0]=FM_RSQ_STATUS;
+si4734_wr_buf[1]=FM_RSQ_STATUS_IN_INTACK;//******ADD
+twi_start_wr(SI4734_ADDRESS,si4734_wr_buf,2);
+while(twi_busy()){}//spin still done
+_delay_us(300);//Blind wait, maybe change to look at interupt
+twi_start_rd(SI4734_ADDRESS, si4734_tune_status_buf,8);
+while(twi_busy()){}//Spin till done
+}//End request status
+
+
+//Alarm tone toggle PORTC pin2
+ISR(TIMER1_COMPA_vect){PORTC ^=(1<<2);}
 
 ISR(TIMER0_COMP_vect){	
 //check_sw(); //checks switches	
@@ -301,7 +369,7 @@ case 391://PORTC ^=1<<0;
          count++;
          if(count==120){min++;count=0;}
          //count_t=0;
-         if(segment_data[4]==11 && mode==0){segment_data[4]=10;}
+         if(segment_data[4]==11 && mode!=1){segment_data[4]=10;}
          else{segment_data[4]=11;}
          break;
       
@@ -344,8 +412,10 @@ int main()
 
 //Setup******************************************************************
 //DDRC=(1<<0)|(1<<1);// Sets bit 6 and 7 to output, used for checking timing
-DDRE=(1<<3)|(1<<2);//3-volume control 2-Radio enable, 7 also gets toggled
+DDRE=(1<<3)|(1<<2)|(1<<4);//3-volume control 2-Radio enable, 
+//7 also gets toggled and 4 is Enable for the 3.3V reg
 //PORTC=(1<<0)|(1<<1);//Sets both bits high to start wit
+PORTE|=(1<<4);//turn on 3.3V reg
 segment_data[4]=10;
 init_tcnt0();      //RTC  **KEEP AS FIRST INIT, it resets TIMSK
 init_tcnt1();      //Alarm tone 
@@ -357,21 +427,25 @@ spi_init();     //sets up SPI
 lcd_init();
 cursor_off();
 //startup_test(); //Runs through all digits to ensure they are working
-spiRW(mode);  //initial mode displayed on bar graph (all off)
+//spiRW(mode);  //initial mode displayed on bar graph (all off)
 ADC_init();
 init_twi();
 uart_init();
 lm73_wr_buf[0]=0;
 twi_start_wr(0x90,lm73_wr_buf,1);
 
-
-
+EICRB|=(1<<ISC70)|(1<<ISC71); //enable external interupt 7 rising edge
+EIMSK|=(1<<INT7);
+sei();
+radio_reset();
+fm_pwr_up();
+fm_tune_freq();
 
 //startup_test();
-sei();         //enable global interrupts
+//sei();         //enable global interrupts
 //End setup**************************************************************
 while(1){
-spiRW(mode);
+//spiRW(mode);
 count_2++;
 //if(count_2==0xFF){count_2=0;}
 
@@ -395,6 +469,26 @@ if(volume<50){volume=50;}
 if(volume>204){volume=204;}
 OCR3A=volume;
 
+//receive strength
+
+if(count_2%50==0){
+while(twi_busy()){}
+fm_rsq_status();
+while(twi_busy()){}
+radio_rs=si4734_tune_status_buf[4];
+}
+if(radio_rs<=8){radio_rs=0;}else
+if(radio_rs<=16){radio_rs=1;}else
+if(radio_rs<=24){radio_rs=3;}else
+if(radio_rs<=32){radio_rs=7;}else
+if(radio_rs<=40){radio_rs=15;}else
+if(radio_rs<=48){radio_rs=31;}else
+if(radio_rs<=56){radio_rs=63;}else
+if(radio_rs<=64){radio_rs=127;}else
+if(radio_rs>64){radio_rs=128;}
+spiRW(radio_rs);
+
+//spiRW(radio);
 //Dimming
 if(bit_is_clear(ADCSRA,ADSC))
 {
@@ -430,6 +524,20 @@ case 2:segsum((alarm_hour*100)+alarm_min);update_LED();alarm_min+=countR;alarm_h
       if(alarm_hour<0){hour=24;}
       if(alarm_min==60){hour++;min=0;}
       if(alarm_hour==25){alarm_hour=0;}
+      break;
+case 3:if(tune_time!=0){tune_time--;
+       segment_data[4]=10;
+       segsum(current_fm_freq/10);}
+       else{segsum((hour*100)+min);}
+       if(countR!=0)
+       {tune_time=20000;
+        current_fm_freq+=countR*20;
+        countR=0;
+        fm_tune_freq();
+       }
+       volume+=(countL*6);countL=0;
+       update_LED();
+
       break;
       default: update_LED();
 }//switch(mode)
