@@ -21,6 +21,7 @@
 #include "lm73_functions_skel.h"
 #include "twi_master.h"
 #include "uart_functions.h"
+#include "si4734.h"
 
 //volatile uint8_t ext_count=0; not being used at this time
 #define SEL0 4
@@ -29,14 +30,20 @@
 #define PWM 7
 //*******************Global*****************************************
 //holds data to be sent to the segments. logic zero turns segment on
+
+volatile uint16_t current_fm_freq=9990; //krkt default
+extern uint8_t si4734_wr_buf[9];
+extern uint8_t si4734_rd_buf[9];
+extern uint8_t si4734_tune_status_buf[8];
+extern volatile uint8_t STC_interrupt;
+
 int8_t remote_temp=100;
 volatile uint16_t lm73_temp;
-
 extern uint8_t lm73_wr_buf[];
 extern uint8_t lm73_rd_buf[];
-uint8_t line1[16]=" ALARM          ";
-uint8_t line2[16]="   Alarm  off   ";
-uint8_t temp_array[16]=" O:    I:       ";
+uint8_t line1[17]=" ALARM           ";
+uint8_t line2[17]="   Alarm  off   ";
+uint8_t temp_array[17]=" O:   I:    R-OFF";
 //outside temp in 3-4  inside in 9-10
 uint8_t lcd_count=0;
 uint8_t volume=150;
@@ -261,6 +268,11 @@ ADCSRA|=(1<<ADEN)|(1<<ADSC)|(0<<ADFR);//Enable, take measurment, and single mode
 
 }//end ADC_init
 
+//Radio "ready" interupt
+ISR(INT7_vect){STC_interrupt=TRUE;}
+
+
+
 //Alarm tone toggle
 ISR(TIMER1_COMPA_vect){
 //Toggle output pint PortC pin 2
@@ -311,12 +323,28 @@ default: check_sw();
 }//switch
 }//IRS
 
+void radio_reset(){
+PORTE &=~(1<<7);
+DDRE |=(1<<7);//set as output
+PORTE|=(1<<2);//set reset
+_delay_us(200);//wait
+PORTE &=~(1<<2);//release reset
+_delay_us(30);
+DDRE &=~(1<<7);//back to input
+}
+
+
+
+
 //*****************************************************************
 int main()
 {
+
+
+
 //Setup******************************************************************
 //DDRC=(1<<0)|(1<<1);// Sets bit 6 and 7 to output, used for checking timing
-DDRE=(1<<3);
+DDRE=(1<<3)|(1<<2);//3-volume control 2-Radio enable, 7 also gets toggled
 //PORTC=(1<<0)|(1<<1);//Sets both bits high to start wit
 segment_data[4]=10;
 init_tcnt0();      //RTC  **KEEP AS FIRST INIT, it resets TIMSK
@@ -336,6 +364,9 @@ uart_init();
 lm73_wr_buf[0]=0;
 twi_start_wr(0x90,lm73_wr_buf,1);
 
+
+
+
 //startup_test();
 sei();         //enable global interrupts
 //End setup**************************************************************
@@ -346,14 +377,14 @@ count_2++;
 
 if(count_2%200==0){twi_start_rd(0x90,lm73_rd_buf,2);_delay_ms(2);}
 
-if(count_2%50==0){
+if(count_2%250==0){
 if(lcd_count==0){cursor_home();}
-if(lcd_count<16){char2lcd(line1[lcd_count]);}
+if(lcd_count<17){char2lcd(line1[lcd_count]);}
 //cursor_home();
 //char2lcd(count_t);
 else{char2lcd(line2[lcd_count-16]);}
 lcd_count++;
-if(lcd_count==16){home_line2();}
+if(lcd_count==17){home_line2();}
 if(lcd_count==32){lcd_count=0;}
 }
 //temp conversion to F
@@ -388,7 +419,7 @@ case 0:segsum((hour*100)+min);
        volume+=(countL*6);
        countL=0;
        uint8_t i;
-       for(i=0;i<16;i++){line1[i]=temp_array[i];}
+       for(i=0;i<17;i++){line1[i]=temp_array[i];}
        break;
 case 1:segsum((hour*100)+min);update_LED();min+=countR;hour+=countL;countR=0;countL=0;count=0;
       if(min<0){min=59;hour--;}
