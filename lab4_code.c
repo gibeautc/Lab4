@@ -55,7 +55,7 @@ extern uint8_t lm73_wr_buf[];
 extern uint8_t lm73_rd_buf[];
 uint8_t line1[17]=" ALARM           ";
 uint8_t line2[17]="   Alarm  off   ";
-uint8_t temp_array[17]=" O:   I:    R-OFF";
+uint8_t temp_array[17]=" O:   I:         ";
 //outside temp in 3-4  inside in 9-10
 uint8_t lcd_count=0;
 uint8_t volume=150;
@@ -89,6 +89,78 @@ int16_t convert_temp(uint16_t temp)
  temp=temp+32;
  return temp;
 }
+
+void radio_reset(){
+PORTE &=~(1<<7);
+DDRE |=(1<<7);//set as output
+PORTE|=(1<<2);//set reset
+_delay_us(200);//wait
+PORTE &=~(1<<2);//release reset
+_delay_us(30);
+DDRE &=~(1<<7);//back to input
+}
+
+
+void fm_tune_freq(){
+
+si4734_wr_buf[0]=0x20;//check on buffer
+si4734_wr_buf[1]=0x00;
+si4734_wr_buf[2]=(uint8_t)(current_fm_freq>>8);//Add current
+si4734_wr_buf[3]=(uint8_t)(current_fm_freq);
+si4734_wr_buf[4]=0x00;
+STC_interrupt=FALSE;
+twi_start_wr(SI4734_ADDRESS,si4734_wr_buf,5);//******Add address
+while(!STC_interrupt){}//Spin till complete
+}
+
+void set_property(uint16_t property,uint16_t property_value){
+
+si4734_wr_buf[0]=SET_PROPERTY;
+si4734_wr_buf[1]=0x00;
+si4734_wr_buf[2]=(uint8_t)(property>>8);
+si4734_wr_buf[3]=(uint8_t)(property);
+si4734_wr_buf[4]=(uint8_t)(property_value>>8);
+si4734_wr_buf[5]=(uint8_t)(property_value);
+twi_start_wr(SI4734_ADDRESS,si4734_wr_buf,6);
+_delay_ms(10);
+
+}//end set property
+
+
+
+void fm_pwr_up(){
+//radio_reset();
+
+current_fm_freq=9990;
+si4734_wr_buf[0]=FM_PWR_UP;    //***********ADD
+si4734_wr_buf[1]=0x50;
+si4734_wr_buf[2]=0x05;
+twi_start_wr(SI4734_ADDRESS, si4734_wr_buf,3);
+_delay_ms(120);
+set_property(GPO_IEN,GPO_IEN_STCIEN);//Check all this shit
+}//end fm power up
+
+
+
+void radio_pwr_dwn(){
+si4734_wr_buf[0]=0x11;
+twi_start_wr(SI4734_ADDRESS,si4734_wr_buf,1);
+_delay_us(310);
+
+}//end power down
+
+void fm_rsq_status(){
+si4734_wr_buf[0]=FM_RSQ_STATUS;
+si4734_wr_buf[1]=FM_RSQ_STATUS_IN_INTACK;//******ADD
+twi_start_wr(SI4734_ADDRESS,si4734_wr_buf,2);
+while(twi_busy()){}//spin still done
+_delay_us(300);//Blind wait, maybe change to look at interupt
+twi_start_rd(SI4734_ADDRESS, si4734_tune_status_buf,8);
+while(twi_busy()){}//Spin till done
+}//End request status
+
+
+
 
 
 //index 10 is used as the 'blank' digit
@@ -173,7 +245,11 @@ alarm ^=1<<7;
 if(bit_is_clear(alarm,7)){line2[11]='f';line2[12]='f';snooze=0;}
 if(bit_is_set(alarm,7)){line2[11]='n';line2[12]=' ';}
 countL=0;countR=0;}//Alarm on/off 
-if(debounce_switch(3)==1){if(mode==0){mode=3;} else if(mode==3){mode=0;}   
+if(debounce_switch(3)==1){if(mode==0){
+  mode=3;radio_reset();fm_pwr_up();
+ while(twi_busy()){} 
+ fm_tune_freq();}else 
+  if(mode==3){mode=0;radio_pwr_dwn();}   
   countL=0;
   countR=0;}//Radio on/off  LOST 13Hz adding 6 if statements
 if(debounce_switch(4)==1){countL=0;countR=0;}//  12/24 
@@ -285,64 +361,6 @@ ADCSRA|=(1<<ADEN)|(1<<ADSC)|(0<<ADFR);//Enable, take measurment, and single mode
 //Radio "ready" interupt
 ISR(INT7_vect){STC_interrupt=TRUE;}
 
-void fm_tune_freq(){
-
-si4734_wr_buf[0]=0x20;//check on buffer
-si4734_wr_buf[1]=0x00;
-si4734_wr_buf[2]=(uint8_t)(current_fm_freq>>8);//Add current
-si4734_wr_buf[3]=(uint8_t)(current_fm_freq);
-si4734_wr_buf[4]=0x00;
-STC_interrupt=FALSE;
-twi_start_wr(SI4734_ADDRESS,si4734_wr_buf,5);//******Add address
-while(!STC_interrupt){}//Spin till complete
-}
-
-void set_property(uint16_t property,uint16_t property_value){
-
-si4734_wr_buf[0]=SET_PROPERTY;
-si4734_wr_buf[1]=0x00;
-si4734_wr_buf[2]=(uint8_t)(property>>8);
-si4734_wr_buf[3]=(uint8_t)(property);
-si4734_wr_buf[4]=(uint8_t)(property_value>>8);
-si4734_wr_buf[5]=(uint8_t)(property_value);
-twi_start_wr(SI4734_ADDRESS,si4734_wr_buf,6);
-_delay_ms(10);
-
-}//end set property
-
-
-
-void fm_pwr_up(){
-//radio_reset();
-
-current_fm_freq=9990;
-si4734_wr_buf[0]=FM_PWR_UP;    //***********ADD
-si4734_wr_buf[1]=0x50;
-si4734_wr_buf[2]=0x05;
-twi_start_wr(SI4734_ADDRESS, si4734_wr_buf,3);
-_delay_ms(120);
-set_property(GPO_IEN,GPO_IEN_STCIEN);//Check all this shit
-}//end fm power up
-
-
-
-void radio_pwr_dwn(){
-si4734_wr_buf[0]=0x11;
-twi_start_wr(SI4734_ADDRESS,si4734_wr_buf,1);
-_delay_us(310);
-
-}//end power down
-
-void fm_rsq_status(){
-si4734_wr_buf[0]=FM_RSQ_STATUS;
-si4734_wr_buf[1]=FM_RSQ_STATUS_IN_INTACK;//******ADD
-twi_start_wr(SI4734_ADDRESS,si4734_wr_buf,2);
-while(twi_busy()){}//spin still done
-_delay_us(300);//Blind wait, maybe change to look at interupt
-twi_start_rd(SI4734_ADDRESS, si4734_tune_status_buf,8);
-while(twi_busy()){}//Spin till done
-}//End request status
-
 
 //Alarm tone toggle PORTC pin2
 ISR(TIMER1_COMPA_vect){PORTC ^=(1<<2);}
@@ -385,21 +403,12 @@ case 105:local_temp=lm73_temp; //8 bit only now
          
          //PUT TEMP in LCD string here
          break;
-default: check_sw();
+default: //check_sw();
          //spiRW(mode);
          break;
 }//switch
 }//IRS
 
-void radio_reset(){
-PORTE &=~(1<<7);
-DDRE |=(1<<7);//set as output
-PORTE|=(1<<2);//set reset
-_delay_us(200);//wait
-PORTE &=~(1<<2);//release reset
-_delay_us(30);
-DDRE &=~(1<<7);//back to input
-}
 
 
 
@@ -437,9 +446,9 @@ twi_start_wr(0x90,lm73_wr_buf,1);
 EICRB|=(1<<ISC70)|(1<<ISC71); //enable external interupt 7 rising edge
 EIMSK|=(1<<INT7);
 sei();
-radio_reset();
-fm_pwr_up();
-fm_tune_freq();
+//radio_reset();
+//fm_pwr_up();
+//fm_tune_freq();
 
 //startup_test();
 //sei();         //enable global interrupts
@@ -447,17 +456,17 @@ fm_tune_freq();
 while(1){
 //spiRW(mode);
 count_2++;
+check_sw();
 //if(count_2==0xFF){count_2=0;}
 
-if(count_2%200==0){twi_start_rd(0x90,lm73_rd_buf,2);_delay_ms(2);}
+if(count_2%200==0){twi_start_rd(0x90,lm73_rd_buf,2);}
 
 if(count_2%250==0){
 if(lcd_count==0){cursor_home();}
 if(lcd_count<17){char2lcd(line1[lcd_count]);}
-//cursor_home();
-//char2lcd(count_t);
 else{char2lcd(line2[lcd_count-16]);}
 lcd_count++;
+update_LED();
 if(lcd_count==17){home_line2();}
 if(lcd_count==32){lcd_count=0;}
 }
@@ -487,7 +496,7 @@ if(radio_rs<=56){radio_rs=63;}else
 if(radio_rs<=64){radio_rs=127;}else
 if(radio_rs>64){radio_rs=128;}
 spiRW(radio_rs);
-
+update_LED();
 //spiRW(radio);
 //Dimming
 if(bit_is_clear(ADCSRA,ADSC))
@@ -498,11 +507,15 @@ ADCSRA|=(1<<ADSC);
 if(bit_is_set(alarm,7) && min==alarm_min+snooze && hour==alarm_hour)
 {
  //Do alarm stuff    this will only sound alarm for 1 min
+ if(bit_is_set(PORTE,4)){PORTE&=~(1<<4);}
+ DDRC |=(1<<2);
  TCCR1B|=(1<<CS12);
  //line1[1]='A';line1[2]='L';line1[3]='A';line1[4]='R';line1[5]='M';
 }
 if(bit_is_clear(alarm,7)||min!=alarm_min+snooze)
 {//line1[1]=' ';line1[2]=' ';line1[3]=' ';line1[4]=' ';line1[5]=' ';
+ if(mode==3){PORTE|=(1<<4);}
+ DDRC &=~(1<<2);PORTC &=~(1<<2);
  TCCR1B &= ~(1<<CS12);
 }//end else
 if(min==60){hour++;min=0;}
