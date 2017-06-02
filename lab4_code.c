@@ -1,8 +1,5 @@
-// lab4_code.c 
 // Chad Gibeaut
 // 10/28/15
-//Code is a compilation of functions from multiple labs
-// Adopted from skelleton code for lab3
 
 //Hardware Setup
 // LED bar graph is multiplexed, PORTA outputs for the segments
